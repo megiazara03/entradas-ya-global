@@ -1,8 +1,11 @@
-# 🎟️ EntradasYa — Monorepo / Repositorio Principal
+# 🎟️ EntradasYa — Repositorio Global & Guía de Despliegue CI/CD
 
 Plataforma de venta y validación de entradas para eventos basada en una arquitectura de **microservicios políglotas**.
 
-Este repositorio agrupa los 8 microservicios del proyecto para que cualquier miembro del equipo pueda clonar, configurar y ejecutar el sistema completo en su propio entorno **(local en Windows / Linux o en su propia máquina virtual / nube)** de forma totalmente independiente, sin requerir credenciales ni cuentas externas.
+Este repositorio agrupa los 8 microservicios del proyecto y detalla:
+1. **Cómo funciona la arquitectura en producción (AWS EC2 + GitHub Actions CI/CD)**.
+2. **Cómo replicar los 8 pipelines de CI/CD en cualquier cuenta propia de AWS o servidor Linux**.
+3. **Cómo ejecutar el sistema completo en modo local o en máquina virtual sin depender de AWS**.
 
 ---
 
@@ -10,126 +13,126 @@ Este repositorio agrupa los 8 microservicios del proyecto para que cualquier mie
 
 El sistema está compuesto por 8 servicios independientes comunicados mediante **HTTP / REST + JSON**:
 
-| Servicio | Lenguaje / Framework | Puerto | Base de Datos | Tipo | Rol / Función |
-| :--- | :--- | :---: | :---: | :---: | :--- |
-| **[web](web/)** | React + Vite + Tailwind | `5173` / `80` | — | Público | Frontend web (clientes, organizadores y personal de acceso). |
-| **[auth](auth/)** | Node.js (Express) | `3001` | `auth_db` | Público | Autenticación, registro, login y generación de tokens JWT. |
-| **[events](events/)** | Python (FastAPI) | `3002` | `events_db` | Público | Gestión de eventos, sectores, precios y cupos disponibles. |
-| **[tickets](tickets/)** | Python (FastAPI) | `3004` | `tickets_db` | Público | Generación de tickets en PDF con código QR y validación. |
-| **[orders](orders/)** | .NET 8 (C# Web API) | `3006` | `orders_db` | Público | Orquesta compras de entradas y coordina pagos, tickets y notificaciones. |
-| **[checkin](checkin/)** | Go (Golang) | `3007` | `checkin_db` | Público | Validación de entradas y control de acceso en la puerta del evento. |
-| **[payments](payments/)** | Go (Golang) | `3003` | `payments_db` | **Interno** | Procesador simulado de transacciones de pago. |
-| **[notifications](notifications/)** | Node.js (Express) | `3005` | — | **Interno** | Envío de correos transaccionales a servidor SMTP (Mailpit). |
+| Servicio | Lenguaje / Framework | Puerto | Base de Datos | Tipo | Rol / Función | Repositorio GitHub |
+| :--- | :--- | :---: | :---: | :---: | :--- | :--- |
+| **web** | React + Vite | `80` (prod) / `5173` | — | Público | Frontend web (clientes, organizadores y porteros) | [megiazara03/web](https://github.com/megiazara03/web) |
+| **auth** | Node.js (Express) | `3001` | `auth_db` | Público | Autenticación, registro, login y tokens JWT | [megiazara03/auth](https://github.com/megiazara03/auth) |
+| **events** | Python (FastAPI) | `3002` | `events_db` | Público | Catálogo de eventos, sectores, precios y aforos | [megiazara03/events](https://github.com/megiazara03/events) |
+| **tickets** | Python (FastAPI) | `3004` | `tickets_db` | Público | Emisión de entradas en PDF con QR y validación | [megiazara03/tickets](https://github.com/megiazara03/tickets) |
+| **orders** | .NET 8 (C#) | `3006` | `orders_db` | Público | Orquestación de compras (coordina pagos, tickets y avisos) | [megiazara03/orders](https://github.com/megiazara03/orders) |
+| **checkin** | Go (Golang) | `3007` | `checkin_db` | Público | Control de acceso y validación en la puerta del evento | [megiazara03/checkin](https://github.com/megiazara03/checkin) |
+| **payments** | Go (Golang) | `3003` | `payments_db` | **Interno** | Procesamiento simulado de pagos | [megiazara03/payments](https://github.com/megiazara03/payments) |
+| **notifications** | Node.js (Express) | `3005` | — | **Interno** | Envío de correos transaccionales a Mailpit | [megiazara03/notifications](https://github.com/megiazara03/notifications) |
 
-### Diagrama de Enrutamiento y Nginx
+---
+
+## ☁️ Arquitectura de Despliegue en AWS EC2
+
+Actualmente la versión en producción corre sobre una instancia de **AWS EC2**:
+* **Sistema Operativo:** Ubuntu 24.04 LTS (x86_64 / amd64).
+* **Reverse Proxy:** **Nginx** escucha en el puerto `80` y enruta el tráfico hacia el frontend y las APIs correspondientes.
+* **Seguridad (Security Group de AWS):**
+  - Puerto `22` (SSH) abierto para despliegue y administración.
+  - Puerto `80` (HTTP) abierto a `0.0.0.0/0` para acceso público web.
 
 ```text
-Navegador / Cliente
+Usuario / Navegador
         │
-        ▼ (Puerto 80)
-   ┌─────────┐
-   │  Nginx  │─── /              ──► Frontend React (archivos compilados)
-   └────┬────┘─── /api/auth/     ──► auth (Node.js :3001)
-        ├─── /api/events/   ──► events (FastAPI :3002)
-        ├─── /api/tickets/  ──► tickets (FastAPI :3004)
-        ├─── /api/orders/   ──► orders (.NET 8 :3006) ──► payments, tickets, notifications
-        ├─── /api/checkin/  ──► checkin (Go :3007)     ──► tickets
-        └─── /mailpit/      ──► Mailpit (Dashboard de correos :8025)
-
-* Nota: payments (3003) y notifications (3005) son servicios internos. Solo responden a llamadas internas con el header `X-Internal-Token`.
+        ▼ (Puerto 80 HTTP)
+┌─────────────────────────────────── AWS EC2 (Ubuntu) ───────────────────────────────────┐
+│                                                                                        │
+│                                      ┌───────────┐                                     │
+│                                      │   Nginx   │                                     │
+│                                      └─────┬─────┘                                     │
+│            ┌───────────────────────────────┼───────────────────────────────┐           │
+│            │ /                             │ /api/{servicio}/              │ /mailpit/ │
+│            ▼                               ▼                               ▼           │
+│   Frontend React              Microservicios Locales                    Mailpit        │
+│   (/var/www/entradasya)       ├── auth          (:3001)                (Puerto 8025)   │
+│                               ├── events        (:3002)                                │
+│                               ├── tickets       (:3004)                                │
+│                               ├── orders        (:3006) ──► payments (:3003)           │
+│                               └── checkin       (:3007) ──► notifications (:3005)      │
+│                                                                                        │
+│   Gestor de Procesos: systemd (entradasya-auth, entradasya-events, etc.)               │
+│   Base de Datos: PostgreSQL (auth_db, events_db, tickets_db, etc.)                    │
+└────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🚀 Opción A: Ejecución en Servidor Propio (Ubuntu Server / Debian / VM)
+## 🚀 Cómo Replicar los 8 Repositorios con Despliegue CI/CD en tu Propia Cuenta
 
-Si cualquier miembro del grupo quiere levantar el entorno en una **Máquina Virtual (VirtualBox / VMware)** o en su **propia instancia en la nube (AWS / GCP / DigitalOcean)**:
+Si un compañero de equipo quiere clonar o hacer fork de los 8 repositorios y tener su propio pipeline de CI/CD desplegando en su propio servidor EC2 (o cualquier Linux):
 
-### 1. Requisitos previos en el servidor
-Instalar las dependencias base en Ubuntu:
+### Paso 1: Crear y Configurar la Instancia EC2 en AWS
+1. Lanzar una instancia EC2 con **Ubuntu Server 24.04 LTS**.
+2. Descargar la clave privada SSH (archivo `.pem`).
+3. En el **Security Group**, habilitar inbound rules:
+   - **SSH (22):** `0.0.0.0/0` (o restringido a tu IP).
+   - **HTTP (80):** `0.0.0.0/0`.
+4. Conectarse a la máquina por SSH y aprovisionar el entorno (o correr los scripts de `deploy/` incluidos en este repositorio):
+   - Instalar: `postgresql`, `nginx`, `nodejs 20+`, `python3-venv`, `golang-go`, `dotnet-runtime-8.0`, `mailpit`.
+
+### Paso 2: Configurar los GitHub Secrets en CADA UNO de los 8 Repositorios
+Cada uno de los 8 repositorios contiene un archivo de workflow en `.github/workflows/pipeline.yml` que se dispara automáticamente con cada `git push` a la rama `develop`.
+
+Para que el pipeline de GitHub Actions sepa dónde y cómo desplegar, ve a:
+👉 **Repositorio en GitHub** ➔ **Settings** ➔ **Secrets and variables** ➔ **Actions** ➔ **New repository secret**
+
+Debes configurar estos **3 Secrets obligatorios en los 8 repositorios**:
+
+| Nombre del Secret | Descripción | Ejemplo de Valor |
+| :--- | :--- | :--- |
+| `EC2_HOST` | La dirección IP pública o DNS público de tu servidor EC2 | `52.73.204.67` |
+| `EC2_USER` | El usuario de login SSH de tu servidor | `ubuntu` |
+| `EC2_SSH_KEY` | El contenido completo del archivo de clave privada `.pem` | `-----BEGIN RSA PRIVATE KEY----- ... -----END RSA PRIVATE KEY-----` |
+
+> ⚠️ **Importante al pegar `EC2_SSH_KEY`:** Abre el archivo `.pem` con un editor de texto (Notepad / VS Code) y copia todo el texto íntegro, incluyendo las líneas `-----BEGIN ...-----` y `-----END ...-----`.
+
+### Paso 3: ¿Qué hace el Pipeline de GitHub Actions en cada Push?
+Al hacer `git push origin develop` en cualquiera de los repositorios:
+1. **Runner de GitHub:** Clona el código, instala dependencias y ejecuta las pruebas / build del microservicio.
+2. **Generación de Artifact:** Empaqueta los binarios o código compilado en un archivo comprimido `.tar.gz`.
+3. **Despliegue SSH/SCP:** Se conecta a la EC2 usando los 3 secretos configurados (`EC2_HOST`, `EC2_USER`, `EC2_SSH_KEY`).
+4. **Instalación y Reinicio:** Descomprime el artefacto en `/home/ubuntu/entradas-ya/<servicio>` (o en `/var/www/entradasya` para el frontend) y reinicia el servicio en systemd (`sudo systemctl restart entradasya-<servicio>`).
+
+---
+
+## 💻 Opción Local / Offline (Sin AWS ni Cuentas Externas)
+
+Si no cuentas con cuenta de AWS y solo quieres ejecutar y probar el proyecto completo en tu computadora personal:
+
+### 1. Clonar el repositorio con todos sus microservicios
 ```bash
-sudo apt update && sudo apt install -y git curl unzip postgresql nginx
-# Instalar Node.js 20+, Python 3.12+, Go 1.22+, .NET 8 Runtime / SDK y Mailpit
-```
-
-### 2. Clonar el repositorio
-```bash
-git clone https://github.com/megiazara03/entradas-ya-global.git
+git clone --recurse-submodules https://github.com/megiazara03/entradas-ya-global.git
 cd entradas-ya-global
 ```
 
-### 3. Configuración automática de Bases de Datos y `.env`
-El script `deploy/configurar-bd-y-env.sh` crea automáticamente todas las bases de datos de PostgreSQL, usuarios con permisos seguros y genera todos los archivos `.env` con secretos únicos:
+### 2. Prerrequisitos en Windows / Linux
+* **PostgreSQL** en ejecución en el puerto `5432`.
+* **Node.js 20+** y `npm`.
+* **Python 3.11+ / 3.12+**.
+* **Go 1.22+**.
+* **.NET 8 SDK**.
+* **Mailpit** (descargar ejecutable para ver correos en `http://localhost:8025`).
+
+### 3. Crear Bases de Datos
+Ejecuta los scripts SQL iniciales ubicados en cada microservicio:
 ```bash
-# Reemplazar con la IP de tu servidor o 'localhost'
-bash deploy/configurar-bd-y-env.sh <IP_DEL_SERVIDOR_O_LOCALHOST>
+psql -U postgres -f auth/db/init.sql
+psql -U postgres -f events/db/init.sql
+psql -U postgres -f orders/db/init.sql
+psql -U postgres -f payments/db/init.sql
+psql -U postgres -f tickets/db/init.sql
+psql -U postgres -f checkin/db/init.sql
 ```
 
-### 4. Instalar servicios systemd y Nginx
-```bash
-bash deploy/instalar-servicios.sh
-```
+### 4. Variables de Entorno
+Copia cada `.env.example` como `.env` dentro de cada carpeta y ajusta la contraseña de tu PostgreSQL local.
 
-### 5. Compilar y desplegar
-```bash
-bash deploy/desplegar.sh
-```
-¡Listo! La aplicación estará disponible en `http://<IP_DEL_SERVIDOR>/`.
-
----
-
-## 💻 Opción B: Ejecución en Entorno Local (Windows)
-
-Para desarrollar o probar sin montar servidores:
-
-### 1. Requisitos
-- **PostgreSQL 14+** corriendo localmente en el puerto `5432`.
-- **Node.js 20+** y `npm`.
-- **Python 3.11+** o **3.12**.
-- **Go 1.22+**.
-- **.NET 8 SDK**.
-- **Mailpit** (para pruebas de correo).
-
-### 2. Inicializar Bases de Datos
-Ejecutar los scripts SQL incluidos en la carpeta `db/init.sql` de cada microservicio en tu PostgreSQL:
-- `auth/db/init.sql`
-- `events/db/init.sql`
-- `orders/db/init.sql`
-- `payments/db/init.sql`
-- `tickets/db/init.sql`
-- `checkin/db/init.sql`
-
-### 3. Variables de Entorno
-Copia cada `.env.example` como `.env` dentro de cada carpeta de servicio y coloca las credenciales de tu PostgreSQL local.
-
-### 4. Iniciar todos los servicios
-Puedes utilizar el script de PowerShell incluido:
+### 5. Iniciar todo con un solo comando (PowerShell)
 ```powershell
 .\iniciar-local.ps1
 ```
-O bien levantar cada microservicio en una terminal individual:
-- **web:** `cd web && npm install && npm run dev` (Disponible en `http://localhost:5173`)
-- **auth:** `cd auth && npm install && npm start`
-- **events:** `cd events && pip install -r requirements.txt && uvicorn app.main:app --port 3002`
-- **orders:** `cd orders && dotnet run`
-- **tickets:** `cd tickets && pip install -r requirements.txt && uvicorn app.main:app --port 3004`
-- **payments:** `cd payments && go run main.go`
-- **checkin:** `cd checkin && go run main.go`
-- **notifications:** `cd notifications && npm install && npm start`
-
----
-
-## 🔄 Repositorios Individuales y Pipelines de CI/CD
-
-Si necesitas consultar o trabajar sobre el pipeline independiente de cada microservicio, cada uno cuenta con su repositorio dedicado y su workflow en GitHub Actions:
-
-- 🌐 [web](https://github.com/megiazara03/web)
-- 🔐 [auth](https://github.com/megiazara03/auth)
-- 🎪 [events](https://github.com/megiazara03/events)
-- 📦 [orders](https://github.com/megiazara03/orders)
-- 💳 [payments](https://github.com/megiazara03/payments)
-- 🎟️ [tickets](https://github.com/megiazara03/tickets)
-- 🔍 [checkin](https://github.com/megiazara03/checkin)
-- 📧 [notifications](https://github.com/megiazara03/notifications)
-
-Cada repositorio individual tiene configurado su pipeline en `.github/workflows/pipeline.yml` para desplegar automáticamente al hacer `push` en la rama `develop`.
+El frontend abrirá en **`http://localhost:5173`** y el dashboard de correos en **`http://localhost:8025`**.
