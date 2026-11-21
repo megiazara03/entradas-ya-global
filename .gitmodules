@@ -1,0 +1,24 @@
+[submodule "auth"]
+	path = auth
+	url = https://github.com/megiazara03/auth.git
+[submodule "checkin"]
+	path = checkin
+	url = https://github.com/megiazara03/checkin.git
+[submodule "events"]
+	path = events
+	url = https://github.com/megiazara03/events.git
+[submodule "notifications"]
+	path = notifications
+	url = https://github.com/megiazara03/notifications.git
+[submodule "orders"]
+	path = orders
+	url = https://github.com/megiazara03/orders.git
+[submodule "tickets"]
+	path = tickets
+	url = https://github.com/megiazara03/tickets.git
+[submodule "web"]
+	path = web
+	url = https://github.com/megiazara03/web.git
+[submodule "payments"]
+	path = payments
+	url = https://github.com/megiazara03/payments.git
